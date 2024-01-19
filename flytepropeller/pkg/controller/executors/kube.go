@@ -51,10 +51,13 @@ var NewClient = func(config *rest.Config, options client.Options) (client.Client
 	// create the k8s client
 	k8sClient, err := client.New(config, options)
 	if err != nil {
-		return k8sClient, err
+		return nil, err
 	}
 
-	k8sOtelClient := otelutils.WrapK8sClient(k8sClient)
+	k8sOtelClient, err := newWriteThroughCachingWriter(otelutils.WrapK8sClient(k8sClient), 50000)
+	if err != nil {
+		return nil, err
+	}
 
 	return k8sOtelClient, nil
 }
@@ -126,8 +129,8 @@ func (w writeThroughCachingWriter) Delete(ctx context.Context, obj client.Object
 	return nil
 }
 
-func newWriteThroughCachingWriter(c client.Client, cacheSize int, scope promutils.Scope) (writeThroughCachingWriter, error) {
-	filter, err := fastcheck.NewOppoBloomFilter(cacheSize, scope.NewSubScope("kube_filter"))
+func newWriteThroughCachingWriter(c client.Client, cacheSize int) (writeThroughCachingWriter, error) {
+	filter, err := fastcheck.NewOppoBloomFilter(cacheSize, promutils.NewScope("kube_filter"))
 	if err != nil {
 		return writeThroughCachingWriter{}, err
 	}
